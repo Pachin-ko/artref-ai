@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArtRef AI - Ton Mannequin 3D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+        import { HfInference } from 'https://cdn.jsdelivr.net/npm/@huggingface/inference@2.6.4/+esm';
+        window.HfInference = HfInference;
+    </script>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col font-sans">
+
+    <header class="p-6 border-b border-zinc-800 flex justify-between items-center">
+        <h1 class="text-2xl font-bold tracking-tighter text-indigo-500">ART<span class="text-zinc-100">REF.AI</span></h1>
+        <span class="text-xs bg-zinc-800 px-2 py-1 rounded-full text-zinc-400">Mode Développeur Actif 🌙</span>
+    </header>
+
+    <main class="flex-1 flex flex-col md:flex-row">
+        <aside class="w-full md:w-80 p-6 border-r border-zinc-800 space-y-8">
+            <section>
+                <label class="block text-sm font-medium mb-2 text-zinc-400">1. Ta photo de référence</label>
+                <div class="border-2 border-dashed border-zinc-700 rounded-lg p-4 text-center hover:border-indigo-500 transition-colors cursor-pointer" id="drop-zone">
+                    <p class="text-xs text-zinc-500" id="file-name-display">Cliquez ou glissez une image ici</p>
+                    <input type="file" id="image-input" class="hidden" accept="image/*">
+                </div>
+            </section>
+
+            <section class="space-y-3">
+                <label class="block text-sm font-medium text-zinc-400">2. Paramètres</label>
+                <div class="p-3 bg-zinc-900 rounded-md border border-zinc-800">
+                    <p class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Rendu souhaité</p>
+                    <p class="text-sm font-bold text-indigo-400">Sculpture Grise (Loomis)</p>
+                </div>
+            </section>
+
+            <button id="generate-btn" class="w-full py-4 mt-8 bg-white text-black font-bold rounded-lg shadow-lg hover:bg-zinc-200 transition-all flex justify-center items-center gap-2">
+                Générer le mannequin
+            </button>
+        </aside>
+
+        <section class="flex-1 p-10 flex flex-col items-center justify-center bg-zinc-950">
+            <div id="result-container" class="relative max-w-2xl w-full aspect-square border border-zinc-800 bg-zinc-900/50 rounded-2xl flex items-center justify-center overflow-hidden">
+                <p id="status-text" class="text-zinc-600 italic">En attente d'une image...</p>
+                <img id="output-image" class="hidden w-full h-full object-contain">
+            </div>
+            
+            <button id="download-btn" class="mt-6 text-zinc-400 hover:text-white flex items-center gap-2 text-sm opacity-0">
+                ⬇️ Télécharger le modèle
+            </button>
+        </section>
+    </main>
+
+    <script>
+        // --- 1. CONFIGURATION ---
+        // METS TON TOKEN ICI (entre les guillemets)
+        const HF_TOKEN = "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"; 
+        
+        // On utilise un modèle stable pour le test de nuit
+        const MODEL_ID = "runwayml/stable-diffusion-v1-5"; 
+
+        // --- 2. SÉLECTEURS ---
+        const dropZone = document.getElementById('drop-zone');
+        const imageInput = document.getElementById('image-input');
+        const generateBtn = document.getElementById('generate-btn');
+        const outputImage = document.getElementById('output-image');
+        const statusText = document.getElementById('status-text');
+        const fileNameDisplay = document.getElementById('file-name-display');
+
+        let selectedFile = null;
+
+        // --- 3. LOGIQUE UPLOAD ---
+        dropZone.onclick = () => imageInput.click();
+        
+        imageInput.onchange = (e) => {
+            selectedFile = e.target.files[0];
+            if(selectedFile) fileNameDisplay.innerText = selectedFile.name;
+        };
+
+        // --- 4. LOGIQUE GENERATION ---
+        generateBtn.onclick = async () => {
+            if (!selectedFile) return alert("Hé ! N'oublie pas de mettre une image d'abord.");
+            if (!HF_TOKEN.startsWith("hf_")) return alert("Ton token Hugging Face ne semble pas valide (il doit commencer par hf_).");
+
+            // UI Update
+            generateBtn.disabled = true;
+            generateBtn.innerText = "L'IA sculpte...";
+            statusText.innerText = "Envoi à Hugging Face (patiente environ 15-30s)...";
+            outputImage.classList.add('hidden');
+
+            try {
+                // Initialisation de l'IA
+                const hf = new window.HfInference(HF_TOKEN);
+
+                const prompt = "A grey clay sculpture of a human mannequin, smooth 3d model style, neutral lighting, studio background, high resolution, sharp edges, 8k render --neg realistic skin, human, eyes, hair, clothes, colorful, blurry";
+
+                // Appel Image-to-Image
+                const result = await hf.imageToImage({
+                    model: MODEL_ID,
+                    inputs: selectedFile,
+                    parameters: {
+                        prompt: prompt,
+                        strength: 0.65, // Force du changement (0.65 = on garde la pose mais on change le style)
+                    },
+                });
+
+                // Affichage du résultat
+                const imageUrl = URL.createObjectURL(result);
+                outputImage.src = imageUrl;
+                outputImage.classList.remove('hidden');
+                statusText.classList.add('hidden');
+                
+                // Bouton Télécharger
+                const dlBtn = document.getElementById('download-btn');
+                dlBtn.style.opacity = "1";
+                dlBtn.onclick = () => {
+                    const a = document.createElement('a');
+                    a.href = imageUrl;
+                    a.download = "mon-mannequin-ia.png";
+                    a.click();
+                };
+
+            } catch (err) {
+                console.error(err);
+                statusText.innerText = "Erreur : " + err.message;
+                alert("Erreur de connexion. Vérifie si tu as bien activé l'extension 'Allow CORS' ou si le modèle est réveillé.");
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.innerText = "Générer le mannequin";
+            }
+        };
+    </script>
+</body>
+</html>
